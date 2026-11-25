@@ -1,0 +1,20 @@
+{
+    "LoadStartHookOffset": "0x40c2d40",
+    "CDPFilterHookOffset": "0x6172a10",
+    "CastToJsonHookOffset": "0xe9bf690",
+    "MiniAppConfigStructOffsets": {
+        "LaunchConfigOffsets": [
+            64,
+            1616,
+            8
+        ],
+        "RemoteDebugConfigOffsets": [
+            1544,
+            16
+        ],
+        "SceneOffset": 480,
+        "WebSocketURLStringOffset": 648,
+        "RemoteDebugModeOffset": 748
+    },
+    "Version": 26516
+}

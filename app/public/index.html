@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>扫码签到 · 位置助手</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: #0f1115; color: #e6e8ee;
+    font: 15px/1.6 "Microsoft YaHei", -apple-system, "Segoe UI", sans-serif;
+    display: flex; justify-content: center; padding: 32px 16px;
+  }
+  .wrap { width: 100%; max-width: 620px; }
+  h1 { font-size: 20px; margin: 0 0 4px; font-weight: 600; }
+  .sub { color: #8b93a7; font-size: 13px; margin-bottom: 24px; }
+  .card {
+    background: #171a21; border: 1px solid #232833; border-radius: 12px;
+    padding: 18px 20px; margin-bottom: 14px;
+  }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 0; }
+  .row + .row { border-top: 1px solid #1e232d; }
+  .k { color: #8b93a7; font-size: 13px; }
+  .v { font-size: 14px; text-align: right; word-break: break-all; }
+  .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; padding: 3px 10px; border-radius: 999px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .on { background: #10281a; color: #4ade80; } .on .dot { background: #4ade80; }
+  .off { background: #2a1414; color: #f87171; } .off .dot { background: #f87171; }
+  .wait { background: #2a2413; color: #fbbf24; } .wait .dot { background: #fbbf24; }
+  button {
+    border: 0; border-radius: 10px; padding: 11px 16px; font-size: 14px; font-weight: 600;
+    cursor: pointer; font-family: inherit; transition: filter .15s;
+  }
+  button:hover { filter: brightness(1.12); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .primary { background: #2563eb; color: #fff; width: 100%; font-size: 15px; padding: 14px; }
+  .ghost { background: #232833; color: #c9cfdd; flex: 1; }
+  .row2 { display: flex; gap: 10px; margin-top: 10px; }
+  .dist { font-size: 13px; color: #8b93a7; margin-top: 10px; }
+  .dist b { color: #4ade80; font-size: 15px; }
+  .dist .bad { color: #f87171; }
+  input {
+    background: #11141a; border: 1px solid #2a3040; color: #e6e8ee; border-radius: 8px;
+    padding: 9px 11px; font-size: 14px; width: 100%; font-family: inherit;
+  }
+  .manual { display: none; gap: 8px; margin-top: 10px; }
+  .manual.show { display: flex; }
+  .hint { color: #6b7385; font-size: 12px; margin-top: 10px; }
+  .log { font-family: Consolas, monospace; font-size: 12px; color: #7f8899; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>扫码签到 · 位置助手</h1>
+  <div class="sub">先开本工具，再开小程序。进到签到页面后，点下面的按钮。</div>
+
+  <div class="card">
+    <div class="row">
+      <span class="k">小程序连接</span>
+      <span id="badgeMini" class="badge off"><span class="dot"></span><span id="txtMini">未连接</span></span>
+    </div>
+    <div class="row">
+      <span class="k">当前页面</span>
+      <span class="v" id="route">—</span>
+    </div>
+    <div class="row">
+      <span class="k">签到标题</span>
+      <span class="v" id="title">—</span>
+    </div>
+    <div class="row">
+      <span class="k">签到状态</span>
+      <span class="v" id="status">—</span>
+    </div>
+    <div class="row">
+      <span class="k">签到场</span>
+      <span class="v" id="addr">—</span>
+    </div>
+    <div class="row">
+      <span class="k">当前伪造坐标</span>
+      <span class="v" id="fake">—</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <button class="primary" id="btnHere">使用签到点坐标（距离归零）</button>
+    <div class="row2">
+      <button class="ghost" id="btnCheck">检测当前距离</button>
+      <button class="ghost" id="btnManual">手动输入</button>
+      <button class="ghost" id="btnClear">恢复真实</button>
+    </div>
+    <div class="manual" id="manual">
+      <input id="inpLat" placeholder="纬度 latitude" value="39.9499588">
+      <input id="inpLng" placeholder="经度 longitude" value="116.3401794">
+      <button class="ghost" id="btnSet" style="flex:0 0 72px">确定</button>
+    </div>
+    <div class="dist" id="dist"></div>
+    <div class="hint">点完上面按钮，回到小程序里正常点「签到」即可。</div>
+  </div>
+
+  <div class="card">
+    <div class="k" style="margin-bottom:8px">最近定位调用</div>
+    <div class="log" id="log">—</div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const STATUS_TEXT = { 0: "未签到", 1: "未签到", 2: "已签到" };
+
+function setBadge(el, cls, text) {
+  el.className = "badge " + cls;
+  el.querySelector(".dot").style.background = cls === "on" ? "#4ade80" : cls === "wait" ? "#fbbf24" : "#f87171";
+  el.querySelector("span:last-child").textContent = text;
+}
+
+async function post(url) {
+  const r = await fetch(url, { method: "POST" });
+  return await r.json().catch(() => ({ ok: false, error: "返回解析失败" }));
+}
+
+async function refresh() {
+  try {
+    const r = await fetch("/api/state", { cache: "no-store" });
+    const d = await r.json();
+    if (!d.miniapp) {
+      setBadge($("badgeMini"), "off", "未连接");
+      $("route").textContent = "—";
+      $("title").textContent = "—";
+      $("status").textContent = "—";
+      $("addr").textContent = "—";
+      $("fake").textContent = "—";
+      return false;
+    }
+    if (!d.ok) {
+      setBadge($("badgeMini"), "wait", "已连接，读取中");
+      if (d.error) $("route").textContent = d.error;
+      return true;
+    }
+    const s = d.state || {};
+    setBadge($("badgeMini"), "on", "已连接");
+    $("route").textContent = s.route || "—";
+    $("title").textContent = s.title || "（非签到页）";
+    $("status").textContent = (s.status === null || s.status === undefined) ? "—" : (STATUS_TEXT[s.status] || ("状态 " + s.status));
+    if (s.addr) {
+      $("addr").textContent = s.addr.name + "（半径 " + s.addr.radius + " 米）";
+    } else {
+      $("addr").textContent = "—";
+    }
+    $("fake").textContent = s.fakePos
+      ? (s.fakePos.latitude.toFixed(6) + ", " + s.fakePos.longitude.toFixed(6))
+      : "未设置（用真实定位）";
+    $("log").textContent = (s.log && s.log.length)
+      ? s.log.map(x => (x.api || "?") + "  " + (x.route || "") + "  " + (x.fake ? "伪造" : "真实")).join("\n")
+      : "—";
+    return true;
+  } catch (e) {
+    setBadge($("badgeMini"), "off", "工具未运行");
+    return false;
+  }
+}
+
+$("btnHere").onclick = async () => {
+  $("btnHere").disabled = true;
+  const d = await post("/api/here");
+  $("btnHere").disabled = false;
+  if (d.ok) {
+    $("dist").innerHTML = "已把坐标设到签到点 <b>" + d.pos.latitude.toFixed(6) + ", " + d.pos.longitude.toFixed(6) + "</b>";
+    setTimeout(check, 200);
+  } else {
+    $("dist").innerHTML = '<span class="bad">' + (d.error || "失败") + "</span>";
+  }
+  refresh();
+};
+
+$("btnCheck").onclick = check;
+async function check() {
+  $("btnCheck").disabled = true;
+  $("dist").textContent = "检测中…";
+  const d = await post("/api/check");
+  $("btnCheck").disabled = false;
+  if (!d.ok) { $("dist").innerHTML = '<span class="bad">' + (d.error || "失败") + "</span>"; return; }
+  const loc = d.loc || {};
+  if (typeof d.distance === "number") {
+    const ok = d.radius && d.distance <= d.radius;
+    $("dist").innerHTML = "距签到点 <b class=\"" + (ok ? "" : "bad") + "\">" + d.distance + " 米</b>（半径 " +
+      d.radius + " 米，" + (ok ? "范围内" : "超出") + "）　坐标 " +
+      Number(loc.latitude).toFixed(6) + ", " + Number(loc.longitude).toFixed(6);
+  } else {
+    $("dist").textContent = JSON.stringify(loc);
+  }
+}
+
+$("btnManual").onclick = () => $("manual").classList.toggle("show");
+$("btnSet").onclick = async () => {
+  const lat = $("inpLat").value.trim(), lng = $("inpLng").value.trim();
+  const d = await post("/api/set?lat=" + encodeURIComponent(lat) + "&lng=" + encodeURIComponent(lng));
+  $("dist").innerHTML = d.ok ? "已设置 <b>" + d.pos.latitude + ", " + d.pos.longitude + "</b>" : '<span class="bad">' + (d.error || "失败") + "</span>";
+  refresh();
+};
+$("btnClear").onclick = async () => {
+  const d = await post("/api/clear");
+  $("dist").textContent = d.ok ? "已恢复真实定位" : (d.error || "失败");
+  refresh();
+};
+
+refresh();
+setInterval(refresh, 2500);
+</script>
+</body>
+</html>

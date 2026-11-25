@@ -1,0 +1,7 @@
+runtime/
+node_modules/
+*.zip
+*.log
+temp/
+__pycache__/
+app/node_modules/
